@@ -1,0 +1,6 @@
+{
+  "name": "Async Team Workspace & Private Reflection Journal",
+  "description": "Collaborative async workspace for software teams that combines automated standup parsing, workload/burnout heatmaps, and private reflection journals backed by Gemini and Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
