@@ -18,7 +18,7 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Set up Socket.io server
 const io = new Server(server, {
@@ -30,6 +30,15 @@ const io = new Server(server, {
 
 // JSON Body parser MUST be registered before API routes
 app.use(express.json());
+
+// Health check endpoints for container and Cloud Run probes
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ status: "ok", uptime: process.uptime() });
+});
+
+app.get("/healthz", (req, res) => {
+  res.status(200).send("OK");
+});
 
 // Initialize Gemini Client
 function getAiClient() {
@@ -48,7 +57,7 @@ async function callGeminiWithFallback(prompt: string, options: any = {}): Promis
     return generateMockGeminiResponse(prompt, options);
   }
 
-  const models = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+  const models = ["gemini-2.5-flash", "gemini-2.5-pro"];
   let lastError: any = null;
 
   for (const model of models) {
@@ -215,7 +224,15 @@ const SignalCreateSchema = z.object({
 
 const JournalSubmitSchema = z.object({
   text: z.string().min(2),
-  templateId: z.enum(["cognitive_bias", "gratitude", "future_challenge", "general"]).default("general")
+  templateId: z.enum([
+    "cognitive_bias",
+    "gratitude",
+    "future_challenge",
+    "boundary_check",
+    "imposter_syndrome",
+    "work_life",
+    "general"
+  ]).default("general")
 });
 
 
@@ -235,6 +252,37 @@ app.get("/api/workspace/state", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Diagnostics and Sync endpoints
+app.get("/api/db/diagnostics", async (req, res) => {
+  try {
+    const diag = await dbService.getDiagnostics();
+    res.json(diag);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/db/sync", async (req, res) => {
+  try {
+    const result = await dbService.syncToFirestore();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset / Clear Workspace data endpoint
+app.post("/api/workspace/reset", async (req, res) => {
+  try {
+    await dbService.resetWorkspaceData();
+    io.emit("workspace_reset", { time: Date.now() });
+    res.json({ success: true, message: "Workspace data reset successfully." });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // 2. Automated Async Standup Parser Endpoint
 app.post("/api/standup/submit", authenticate, async (req, res) => {
@@ -468,6 +516,12 @@ app.post("/api/journal/submit", authenticate, async (req, res) => {
       systemContext += `\n[TEMPLATE: GRATITUDE] Guide them through a sensory gratitude practice. Urge them to explore micro-moments (interactions, brief relief, sensory comfort) rather than surface generic claims, and explain why those details are restorative.`;
     } else if (templateId === "future_challenge") {
       systemContext += `\n[TEMPLATE: FUTURE_CHALLENGE] Help them structure a mental prep routine for an upcoming challenge. Identify immediate blockers, map custom coping strategies, and define crisp, low-overhead micro-intentions.`;
+    } else if (templateId === "boundary_check") {
+      systemContext += `\n[TEMPLATE: BOUNDARY_CHECK] Help them evaluate work capacity, examine irrational guilt about saying no, and offer an assertive script to protect engineering focus.`;
+    } else if (templateId === "imposter_syndrome") {
+      systemContext += `\n[TEMPLATE: IMPOSTER_SYNDROME] Help them separate subjective fear from objective engineering facts, celebrate steady progress, and overcome feelings of being inadequate.`;
+    } else if (templateId === "work_life") {
+      systemContext += `\n[TEMPLATE: WORK_LIFE] Guide them on building clear end-of-day shutdown rituals and psychological detachment from work notifications in the evening.`;
     }
 
     const mainPrompt = `
@@ -601,6 +655,27 @@ async function startServer() {
     console.log(`=======================================================`);
     console.log(`   WORKSPACE SERVER ACTIVE: http://localhost:${PORT}   `);
     console.log(`=======================================================`);
+  });
+
+  server.on("error", (err: any) => {
+    console.error("[Server Error]", err);
+  });
+
+  // Graceful shutdown handling for Cloud Run container lifecycle
+  process.on("SIGTERM", () => {
+    console.log("[Server] SIGTERM received. Closing HTTP server...");
+    server.close(() => {
+      console.log("[Server] HTTP server closed gracefully.");
+      process.exit(0);
+    });
+  });
+
+  process.on("SIGINT", () => {
+    console.log("[Server] SIGINT received. Closing HTTP server...");
+    server.close(() => {
+      console.log("[Server] HTTP server closed gracefully.");
+      process.exit(0);
+    });
   });
 }
 

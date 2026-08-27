@@ -1,0 +1,14 @@
+{
+  "profiles": [],
+  "entries": [],
+  "standups": [],
+  "tasks": [],
+  "signals": [],
+  "burnout": {
+    "id": "burnout-latest",
+    "burnoutScore": 15,
+    "riskTier": "Low",
+    "primaryDriver": "Workspace fresh and balanced.",
+    "createdAt": 1787843600000
+  }
+}

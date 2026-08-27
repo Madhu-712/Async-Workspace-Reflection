@@ -39,7 +39,7 @@ export interface JournalEntry {
   userId: string;
   text: string;
   response: string;
-  templateId?: 'cognitive_bias' | 'gratitude' | 'future_challenge' | 'general';
+  templateId?: 'cognitive_bias' | 'gratitude' | 'future_challenge' | 'boundary_check' | 'imposter_syndrome' | 'work_life' | 'general';
   createdAt: number;
 }
 

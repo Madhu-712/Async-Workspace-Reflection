@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { Sparkles, Terminal, Shield, RefreshCw, Users, HelpCircle, AlertTriangle, Play, BookOpen, Layers } from "lucide-react";
+import { Sparkles, Terminal, Shield, RefreshCw, Users, HelpCircle, AlertTriangle, Play, BookOpen, Layers, Database, CheckCircle2, X, Info } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { WorkspaceTask, TeamSignal, Standup, BurnoutAnalysis, UserProfile } from "./types";
 import UserProfilePanel from "./components/UserProfilePanel";
@@ -37,6 +37,12 @@ export default function App() {
   // Live Socket.io events
   const [socketEvents, setSocketEvents] = useState<any[]>([]);
   const [socketConnected, setSocketConnected] = useState(false);
+
+  // Database diagnostics modal
+  const [showDbModal, setShowDbModal] = useState(false);
+  const [dbDiag, setDbDiag] = useState<any>(null);
+  const [isSyncingDb, setIsSyncingDb] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   // Init socket and fetch initial state
   useEffect(() => {
@@ -104,13 +110,48 @@ export default function App() {
       setBurnout(data);
     });
 
+    socketInstance.on("workspace_reset", () => {
+      fetchState();
+    });
+
     return () => {
       socketInstance.disconnect();
     };
   }, []);
 
+
+  const fetchDbDiagnostics = async () => {
+    try {
+      const res = await fetch("/api/db/diagnostics");
+      if (res.ok) {
+        const data = await res.json();
+        setDbDiag(data);
+      }
+    } catch (e) {
+      console.warn("Could not fetch DB diagnostics", e);
+    }
+  };
+
+  const handleSyncToFirestore = async () => {
+    setIsSyncingDb(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/db/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sync failed");
+      setSyncResult("✅ " + data.message);
+      await fetchDbDiagnostics();
+      await fetchState();
+    } catch (err: any) {
+      setSyncResult("❌ " + err.message);
+    } finally {
+      setIsSyncingDb(false);
+    }
+  };
+
   const fetchState = async () => {
     try {
+      fetchDbDiagnostics();
       const res = await fetch("/api/workspace/state");
       if (!res.ok) throw new Error("Failed to load workspace state");
       const data = await res.json();
@@ -386,7 +427,37 @@ export default function App() {
               Welcome back, <span className="font-semibold text-indigo-600">{currentDisplayName}</span>. Team productivity is up 12% today.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={() => {
+                fetchDbDiagnostics();
+                setShowDbModal(true);
+              }}
+              id="btn-db-diagnostics"
+              className={`px-3.5 py-2 rounded-lg text-sm font-medium shadow-sm flex items-center gap-1.5 border transition-all cursor-pointer ${
+                dbDiag?.firestoreConnected
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                  : "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
+              }`}
+              title="Cloud Firestore Status & Sync"
+            >
+              <Database className="w-3.5 h-3.5" />
+              {dbDiag?.firestoreConnected ? "Firestore Live" : "Database: Local Fallback"}
+            </button>
+            <button
+              onClick={async () => {
+                if (window.confirm("Reset all test/demo tasks, standups, and entries to start with a clean workspace?")) {
+                  await fetch("/api/workspace/reset", { method: "POST" });
+                  fetchState();
+                }
+              }}
+              id="btn-reset-workspace"
+              className="bg-white border border-rose-200 text-rose-600 px-3.5 py-2 rounded-lg text-sm font-medium shadow-sm flex items-center gap-1.5 hover:bg-rose-50 transition-all cursor-pointer"
+              title="Clear old sample data"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Clear Old Data
+            </button>
             <button
               onClick={fetchState}
               id="btn-manual-sync"
@@ -403,6 +474,119 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        {/* Database Diagnostics Modal */}
+        <AnimatePresence>
+          {showDbModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-xl w-full p-6 relative overflow-hidden"
+              >
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-lg ${dbDiag?.firestoreConnected ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      <Database className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800">Database & Firestore Diagnostics</h3>
+                      <p className="text-xs text-slate-500">Live connection state and cloud synchronization</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowDbModal(false)}
+                    className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="py-4 space-y-4 text-sm">
+                  {/* Status Box */}
+                  <div className={`p-3.5 rounded-lg border ${
+                    dbDiag?.firestoreConnected
+                      ? "bg-emerald-50/70 border-emerald-200 text-emerald-900"
+                      : "bg-amber-50/70 border-amber-200 text-amber-900"
+                  }`}>
+                    <div className="flex items-center gap-2 font-semibold">
+                      {dbDiag?.firestoreConnected ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>Cloud Firestore: Connected & Verified</span>
+                        </>
+                      ) : (
+                        <>
+                          <Info className="w-4 h-4 text-amber-600" />
+                          <span>Using High-Performance Persistent Local Driver</span>
+                        </>
+                      )}
+                    </div>
+                    <p className="text-xs mt-1 opacity-90">{dbDiag?.pingMessage || "Checking connection..."}</p>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200 space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-medium">Service Account Configured:</span>
+                      <span className="font-semibold text-slate-800">{dbDiag?.serviceAccountConfigured ? "Yes (Active)" : "Not Set"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-medium">Target GCP Project ID:</span>
+                      <span className="font-mono text-slate-800 font-semibold">{dbDiag?.projectId || "None"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-medium">Local Items Stored:</span>
+                      <span className="text-slate-800">
+                        {dbDiag?.localItemsCount ? `${dbDiag.localItemsCount.standups} standups, ${dbDiag.localItemsCount.tasks} tasks, ${dbDiag.localItemsCount.userEntries} reflections` : "0"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Instructions if not connected */}
+                  {!dbDiag?.firestoreConnected && (
+                    <div className="bg-blue-50/60 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 space-y-1.5">
+                      <p className="font-semibold">How to connect your Firebase Project:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-slate-700">
+                        <li>In Firebase Console, go to <b>Project Settings ⚙️ ➔ Service accounts</b></li>
+                        <li>Click <b>Generate new private key</b> (downloads a JSON file)</li>
+                        <li>Copy the JSON content and add it in AI Studio Settings as <b>FIREBASE_SERVICE_ACCOUNT</b></li>
+                      </ol>
+                    </div>
+                  )}
+
+                  {/* Action button */}
+                  {dbDiag?.firestoreConnected && (
+                    <button
+                      onClick={handleSyncToFirestore}
+                      disabled={isSyncingDb}
+                      className="w-full bg-emerald-600 text-white font-medium py-2.5 px-4 rounded-lg hover:bg-emerald-700 transition flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+                    >
+                      <Database className="w-4 h-4" />
+                      {isSyncingDb ? "Syncing collections..." : "Push Test Collections to Firestore Console"}
+                    </button>
+                  )}
+
+                  {syncResult && (
+                    <div className="p-2.5 rounded bg-slate-100 text-xs font-mono text-slate-800 text-center">
+                      {syncResult}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex justify-end">
+                  <button
+                    onClick={() => setShowDbModal(false)}
+                    className="px-4 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 text-xs font-medium cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {/* 12-Column Grid Layout matching Sleek Interface Design */}
         <div className="flex-1 grid grid-cols-12 gap-6 items-start min-h-0">

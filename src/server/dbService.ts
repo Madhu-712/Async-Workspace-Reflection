@@ -12,26 +12,115 @@ import path from "path";
 // Initialize Admin SDK lazily or use environment credentials
 let isFirestoreAvailable = false;
 let db: Firestore | null = null;
+let targetProjectId: string | null = null;
+let lastFirestoreError: string | null = null;
 
-try {
-  if (getApps().length === 0) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      initializeApp({
-        credential: cert(sa)
-      });
-      console.log("Firebase Admin initialized with SERVICE_ACCOUNT");
-    } else {
-      initializeApp();
-      console.log("Firebase Admin initialized with default credentials");
+function parseServiceAccount(input: string): any {
+  let text = input.trim();
+
+  // If wrapped in single or double quotes
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    try {
+      const unquoted = JSON.parse(text);
+      if (typeof unquoted === "string") text = unquoted.trim();
+      else if (typeof unquoted === "object") return unquoted;
+    } catch {
+      text = text.slice(1, -1).trim();
     }
   }
-  db = getFirestore();
-  isFirestoreAvailable = true;
-  console.log("Firestore adapter successfully loaded.");
-} catch (error) {
-  console.log("Using high-performance JSON memory adapter as standard offline driver.");
+
+  // Check if base64 encoded
+  if (!text.startsWith("{") && text.length > 30) {
+    try {
+      const decoded = Buffer.from(text, "base64").toString("utf-8");
+      if (decoded.includes("project_id")) {
+        text = decoded.trim();
+      }
+    } catch {}
+  }
+
+  // If opening brace was cut off during copy: e.g. "type": "service_account"...
+  if (!text.startsWith("{")) {
+    const firstBrace = text.indexOf("{");
+    if (firstBrace !== -1) {
+      text = text.substring(firstBrace);
+    } else if (text.includes("type") && text.includes("project_id")) {
+      text = "{" + text;
+    }
+  }
+
+  // If closing brace was cut off
+  if (!text.endsWith("}")) {
+    const lastBrace = text.lastIndexOf("}");
+    if (lastBrace !== -1) {
+      text = text.substring(0, lastBrace + 1);
+    } else {
+      text = text + "}";
+    }
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err1) {
+    // Try normalizing escaped quotes or backslashes
+    try {
+      const cleaned = text.replace(/\\"/g, '"');
+      parsed = JSON.parse(cleaned);
+    } catch (err2) {
+      const fixed = text.replace(/\n/g, "\\n");
+      parsed = JSON.parse(fixed);
+    }
+  }
+
+  if (typeof parsed === "string") {
+    parsed = JSON.parse(parsed);
+  }
+
+  if (parsed.private_key && typeof parsed.private_key === "string") {
+    parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+  }
+
+  return parsed;
 }
+
+function initFirebase() {
+  try {
+    if (getApps().length === 0) {
+      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        try {
+          const sa = parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
+          targetProjectId = sa.project_id || null;
+          initializeApp({
+            credential: cert(sa)
+          });
+          console.log(`Firebase Admin initialized with SERVICE_ACCOUNT for project: ${targetProjectId}`);
+        } catch (saErr: any) {
+          lastFirestoreError = `Failed to parse FIREBASE_SERVICE_ACCOUNT: ${saErr.message}`;
+          console.warn(lastFirestoreError);
+        }
+      } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CONFIG || process.env.GCLOUD_PROJECT) {
+        targetProjectId = process.env.GCLOUD_PROJECT || null;
+        initializeApp();
+        console.log("Firebase Admin initialized with cloud credentials");
+      }
+    }
+
+    if (getApps().length > 0) {
+      db = getFirestore();
+      isFirestoreAvailable = true;
+      console.log("Firestore adapter successfully loaded.");
+    } else {
+      console.log("Using high-performance JSON memory adapter as standard driver.");
+    }
+  } catch (error: any) {
+    isFirestoreAvailable = false;
+    lastFirestoreError = error?.message || String(error);
+    console.log("Using high-performance JSON memory adapter as standard offline driver.");
+  }
+}
+
+initFirebase();
 
 // Memory Database storage as fallback and initial seeds
 const memoryDb = {
@@ -62,6 +151,10 @@ const LOCAL_DB_PATH = path.join(process.cwd(), "src", "server", "local_db_persis
 
 function saveLocalDb() {
   try {
+    const dir = path.dirname(LOCAL_DB_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     const data = {
       profiles: Array.from(memoryDb.profiles.entries()),
       entries: Array.from(memoryDb.entries.entries()),
@@ -72,7 +165,7 @@ function saveLocalDb() {
     };
     fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
-    console.error("Failed to write local database persistence file:", err);
+    // Non-fatal if filesystem is read-only in container
   }
 }
 
@@ -377,5 +470,147 @@ export const dbService = {
     memoryDb.burnout = updated;
     saveLocalDb();
     return updated;
+  },
+
+  // RESET / CLEAR ALL WORKSPACE DATA
+  async resetWorkspaceData() {
+    memoryDb.standups = [];
+    memoryDb.tasks = [];
+    memoryDb.signals = [];
+    memoryDb.entries.clear();
+    memoryDb.burnout = {
+      id: "burnout-latest",
+      burnoutScore: 12,
+      riskTier: "Low",
+      primaryDriver: "Workspace fresh and balanced.",
+      createdAt: Date.now()
+    };
+    saveLocalDb();
+
+    if (isFirestoreAvailable && db) {
+      try {
+        // Clear collections in Firestore
+        const collections = ["standups", "tasks", "signals"];
+        for (const col of collections) {
+          const snapshot = await db.collection(col).get();
+          const batch = db.batch();
+          snapshot.docs.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      } catch (err) {
+        handleFirestoreError(err);
+      }
+    }
+  },
+
+  // DIAGNOSTICS & STATUS
+  async getDiagnostics() {
+    if (!isFirestoreAvailable || !db) {
+      initFirebase();
+    }
+
+    const hasEnvSa = !!process.env.FIREBASE_SERVICE_ACCOUNT;
+    const hasGcloud = !!(process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CONFIG || process.env.GCLOUD_PROJECT);
+    
+    let firestorePingSuccess = false;
+    let pingMessage = "Not connected";
+    let collectionsFound: string[] = [];
+
+    if (isFirestoreAvailable && db) {
+      try {
+        // Try writing and reading a quick ping document
+        const pingRef = db.collection("_system_health").doc("ping");
+        await pingRef.set({ timestamp: Date.now(), status: "active" });
+        firestorePingSuccess = true;
+        pingMessage = "Live connection verified! Document write succeeded.";
+
+        // List collections
+        const cols = await db.listCollections();
+        collectionsFound = cols.map(c => c.id);
+      } catch (err: any) {
+        firestorePingSuccess = false;
+        pingMessage = `Firestore write error: ${err.message || String(err)}`;
+        lastFirestoreError = pingMessage;
+      }
+    } else {
+      pingMessage = hasEnvSa 
+        ? `Service account found in environment, but initialization reported: ${lastFirestoreError || "unknown error"}` 
+        : "FIREBASE_SERVICE_ACCOUNT is not detected in environment variables yet.";
+    }
+
+    return {
+      serviceAccountConfigured: hasEnvSa || hasGcloud,
+      firestoreConnected: isFirestoreAvailable && firestorePingSuccess,
+      projectId: targetProjectId || (process.env.GCLOUD_PROJECT || "not-configured"),
+      pingMessage,
+      collectionsFound,
+      localItemsCount: {
+        standups: memoryDb.standups.length,
+        tasks: memoryDb.tasks.length,
+        signals: memoryDb.signals.length,
+        userEntries: Array.from(memoryDb.entries.values()).reduce((acc, curr) => acc + curr.length, 0)
+      }
+    };
+  },
+
+  // SEED OR SYNC ALL DATA DIRECTLY TO FIRESTORE
+  async syncToFirestore() {
+    if (!isFirestoreAvailable || !db) {
+      throw new Error("Cloud Firestore is not connected. Please ensure FIREBASE_SERVICE_ACCOUNT is provided.");
+    }
+
+    // Write a test standup
+    const testStandup = {
+      id: `standup-${Date.now()}`,
+      userId: "demo-user-1",
+      userName: "Lead Engineer",
+      role: "Developer" as const,
+      doneToday: "Configured Cloud Firestore collections & verified schema.",
+      plannedToday: "Build real-time async status pipeline.",
+      blockers: "",
+      actionableItems: ["Review sync metrics"],
+      systemicBlockers: [],
+      createdAt: Date.now()
+    };
+    await db.collection("standups").doc(testStandup.id).set(testStandup);
+
+    // Write a test task
+    const testTask = {
+      id: `task-${Date.now()}`,
+      title: "Verify Firestore collections in Firebase Console",
+      status: "done" as const,
+      assignee: "Developer",
+      isBlocker: false,
+      createdAt: Date.now()
+    };
+    await db.collection("tasks").doc(testTask.id).set(testTask);
+
+    // Write a test signal
+    const testSignal = {
+      id: `sig-${Date.now()}`,
+      userName: "Developer",
+      message: "Firestore collections successfully initialized and active.",
+      sentiment: "positive" as const,
+      createdAt: Date.now()
+    };
+    await db.collection("signals").doc(testSignal.id).set(testSignal);
+
+    // Write a test user entry
+    const testEntry = {
+      id: `entry-${Date.now()}`,
+      userId: "demo-user-1",
+      prompt: "Initial cognitive check",
+      response: "All database systems connected and secure.",
+      framework: "Cognitive Bias Explorer",
+      sentimentScore: 85,
+      createdAt: Date.now()
+    };
+    await db.collection("users").doc("demo-user-1").collection("entries").doc(testEntry.id).set(testEntry);
+
+    return {
+      success: true,
+      message: "Successfully seeded collections: standups, tasks, signals, and users/entries!"
+    };
   }
 };
+
