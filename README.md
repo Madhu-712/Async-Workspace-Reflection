@@ -280,48 +280,24 @@ The repository specifically implements owner-bound journal isolation and aggrega
 
 ## 📊 Team Intelligence Dashboard
 
-> Add screenshot here
+<img width="1470" height="1140" alt="Async standup submissions" src="https://github.com/user-attachments/assets/8fe2a5fc-575d-4c65-b2f8-49aa05b0ea76" />
 
-```text
-assets/screenshots/team-dashboard.png
-```
-
-Suggested screenshot should showcase:
-
-* Burnout Index
-* Team workload
-* Sentiment trends
-* Role-based fatigue heatmap
-* Active blockers
-
----
 
 ## 🧑‍💻 Async Standup Workspace
 
-> Add screenshot here
+<img width="1470" height="1140" alt="standup submissions" src="https://github.com/user-attachments/assets/94640aa7-f497-4284-95b7-9e31fde039e2" />
 
-```text
-assets/screenshots/async-standup.png
-```
 
----
 
 ## 🧠 Private Reflection Journal
 
-> Add screenshot here
+<img width="1470" height="1140" alt="Private reflection journal" src="https://github.com/user-attachments/assets/51b604ed-9ca5-4f2a-af4c-3fa56bfd957d" />
 
-```text
-assets/screenshots/reflection-journal.png
-```
+<img width="1470" height="1140" alt="Empathethic emotional validation" src="https://github.com/user-attachments/assets/2cbf8111-a182-4aac-86b0-b0fc3f5195ac" />
 
-Recommended screenshot should highlight:
+<img width="1470" height="1140" alt="Cognitive Reflection   Reframing" src="https://github.com/user-attachments/assets/818d1e2b-121f-4002-98b4-9a65b2aace58" />
 
-* Reflection framework selector
-* Journal input
-* Gemini AI response
-* Reflection history/streak
 
----
 
 # 👥 User Personas
 
