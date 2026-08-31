@@ -1,7 +1,12 @@
 # 🛡️ DevBalance — AI-Powered Async Workspace & Private Reflection
 
+
 > **Unifying team velocity with private developer well-being.**
+
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/be741d03-1cc2-4617-b5a1-062cd7f3c817" />
+
+
+
 
 
 **DevBalance** is an AI-powered workspace designed for modern asynchronous engineering teams. It brings together **team productivity, workload visibility, burnout-risk signals, asynchronous standups, and private AI-assisted reflection** in one privacy-conscious platform.
