@@ -2,6 +2,8 @@
 
 
 > **Unifying team velocity with private developer well-being.**
+>
+> Try demo link : 
 
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/be741d03-1cc2-4617-b5a1-062cd7f3c817" />
 
