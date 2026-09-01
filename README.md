@@ -3,7 +3,7 @@
 
 > **Unifying team velocity with private developer well-being.**
 >
-> Try demo link : 
+> Try demo link : https://asyncworkspacereflection.streamlit.app/
 
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/be741d03-1cc2-4617-b5a1-062cd7f3c817" />
 
@@ -263,16 +263,13 @@ The repository specifically implements owner-bound journal isolation and aggrega
 # 🚀 Live Demo
 
 🔗 **GitHub Repository**
-
-[Async Workspace Reflection — GitHub](https://github.com/Madhu-712/Async-Workspace-Reflection?utm_source=chatgpt.com)
+https://github.com/Madhu-712/Async-Workspace-Reflection
 
 🔗 **Project Article**
+https://medium.com/@madhu.712/enterpriseops-agent-building-an-ai-powered-enterprise-decision-intelligence-system-with-google-714ffc92011f?sharedUserId=madhu.712
 
-[DevBalance — Medium Article](https://medium.com/@madhu.712/devbalance-the-ai-powered-workspace-unifying-team-velocity-with-private-developer-well-being-9fd617f0a000?utm_source=chatgpt.com)
-
-> Add your deployed application URL here when a public production deployment is available.
-
-**Live Application:** `Coming Soon`
+**Live Application:** 
+https://asyncworkspacereflection.streamlit.app/
 
 ---
 
