@@ -769,6 +769,10 @@ By combining **engineering execution signals with private AI-assisted reflection
 
 [Medium — DevBalance: The AI-Powered Workspace] -https://medium.com/@madhu.712/devbalance-the-ai-powered-workspace-unifying-team-velocity-with-private-developer-well-being-9fd617f0a000?sharedUserId=madhu.712
 
+**Video demo :**
+
+https://youtu.be/jc3cbI-p7-I
+
 ---
 
 ### 👩‍💻 Author
@@ -777,5 +781,4 @@ By combining **engineering execution signals with private AI-assisted reflection
 
 AI Agent Developer | Generative AI | Agentic AI | LLM Systems | Prompt Engineering
 
-GitHub:
-https://github.com/Madhu-712/Async-Workspace-Reflection
+
